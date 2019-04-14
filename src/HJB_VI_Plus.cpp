@@ -422,7 +422,8 @@ void HJBDataWriter(const std::vector<int>& NodeParentIndVector, const std::vecto
   // *. Cost
   FILE * StateCostFile = NULL;
   string StateCostFileName = "PVKFailureMetric" + std::to_string(Angle_i) + ".bin";
-  StateCostFile = fopen(StateCostFileName, "wb");
+  const char * StateCostFileName_Char = StateCostFileName.c_str();
+  StateCostFile = fopen(StateCostFileName_Char, "wb");
   fwrite(&NodeCostVector[0], sizeof(float), NodeCostVector.size(), StateCostFile);
   fclose(StateCostFile);
 }
@@ -513,8 +514,7 @@ int main()
 
   // Save the PVkDataSpecs first into PVkDataSpecs.bin
   FILE * StateVectorSpecsFile = NULL;
-  string StateVectorSpecsFileName = "PVkDataSpecs.bin"
-  StateVectorSpecsFile = fopen(StateVectorSpecsFileName, "wb");
+  StateVectorSpecsFile = fopen("PVkDataSpecs.bin", "wb");
   fwrite(&StateVectorSpecs[0], sizeof(double), StateVectorSpecs.size(), StateVectorSpecsFile);
   fclose(StateVectorSpecsFile);
 
@@ -532,6 +532,7 @@ int main()
     int Angle_i = AngleLow + AngleDiff * i;
 
     g = 9.81 * cos(Angle_i*1.0/180 * 3.1415926535897);
+    cout<<g<<endl;
 
     // Here we are going one step forward towards completeness.
     // At the final time the velocities need to be enumerated as well.
@@ -599,7 +600,7 @@ int main()
       // std::printf("CoveragePercentage: %f\n", CoveragePercentage);
       UsedPoint = UsedPoint + 1;
     }
-    HJBDataWriter(NodeParentIndVector, NodeCostVector, StateVectorSpecs, Angle_i);
+    HJBDataWriter(NodeParentIndVector, NodeCostVector, Angle_i);
   }
   duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
   printf ("Total running time: %f s\n", duration);
