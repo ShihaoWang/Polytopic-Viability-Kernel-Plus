@@ -1,3 +1,0 @@
-/home/shihao/Desktop/Polytopic-Viability-Kernel-Plus/build/CMakeFiles/rebuild_cache.dir
-/home/shihao/Desktop/Polytopic-Viability-Kernel-Plus/build/CMakeFiles/MyApp.dir
-/home/shihao/Desktop/Polytopic-Viability-Kernel-Plus/build/CMakeFiles/edit_cache.dir

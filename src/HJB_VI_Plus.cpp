@@ -19,7 +19,7 @@ const int Thetadot_Grids = 61;
 double Length_Low = 0.35;
 double Length_Upp = 1.05;
 
-double g = 9.81;
+double g;
 
 const int F_Grids = 51;       // This is the discretization of the control points within a range
 double delta_t = 0.05;
@@ -410,25 +410,21 @@ void FrontierUpdate(const SystemIndex & Node_kp1_index, std::set< std::tuple<int
     }
   }
 }
-void HJBDataWriter(const std::vector<int>& NodeParentIndVector, const std::vector<float>& NodeCostVector, const std::vector<double> & StateVectorSpecs)
+void HJBDataWriter(const std::vector<int>& NodeParentIndVector, const std::vector<float>& NodeCostVector, const int & Angle_i)
 {
-  // *. Node Transition
-  FILE * StateTransFile = NULL;
-  StateTransFile = fopen("PVKNextIndPlus.bin", "wb");
-  fwrite(&NodeParentIndVector[0], sizeof(int), NodeParentIndVector.size(), StateTransFile);
-  fclose(StateTransFile);
+  // // *. Node Transition
+  // FILE * StateTransFile = NULL;
+  // string StateTransFileName = "PVKNextInd" + Angle + ".bin";
+  // StateTransFile = fopen(StateTransFileName, "wb");
+  // fwrite(&NodeParentIndVector[0], sizeof(int), NodeParentIndVector.size(), StateTransFile);
+  // fclose(StateTransFile);
 
   // *. Cost
   FILE * StateCostFile = NULL;
-  StateCostFile = fopen("PVKFailureMetricPlus.bin", "wb");
+  string StateCostFileName = "PVKFailureMetric" + std::to_string(Angle_i) + ".bin";
+  StateCostFile = fopen(StateCostFileName, "wb");
   fwrite(&NodeCostVector[0], sizeof(float), NodeCostVector.size(), StateCostFile);
   fclose(StateCostFile);
-
-
-  FILE * StateVectorSpecsFile = NULL;
-  StateVectorSpecsFile = fopen("PVkDataSpecsPlusa.bin", "wb");
-  fwrite(&StateVectorSpecs[0], sizeof(double), StateVectorSpecs.size(), StateVectorSpecsFile);
-  fclose(StateVectorSpecsFile);
 }
 
 SystemIndex VectorIndexToSystemIndex(const int & x)
@@ -497,7 +493,6 @@ int main()
   StateVectorSpecs.push_back(LdotLow);
   StateVectorSpecs.push_back(LdotUpp);
   StateVectorSpecs.push_back(ThetaLow);
-
   StateVectorSpecs.push_back(ThetaUpp);
   StateVectorSpecs.push_back(ThetadotLow);
   StateVectorSpecs.push_back(ThetadotUpp);
@@ -507,98 +502,106 @@ int main()
   StateVectorSpecs.push_back(Theta_Grids * 1.0);
   StateVectorSpecs.push_back(Thetadot_Grids * 1.0);
 
-  StateVectorSpecs.push_back(Length_Low);
-  StateVectorSpecs.push_back(Length_Upp);
-  StateVectorSpecs.push_back(g);
+  const int AngleLow = 0;
+  const int AngleUpp = 80;
+  const int AngleDiff = 10;
+
+  // This part needs to be updated with new information.
+  StateVectorSpecs.push_back(AngleLow * 1.0);
+  StateVectorSpecs.push_back(AngleUpp * 1.0);
+  StateVectorSpecs.push_back(AngleDiff * 1.0);
+
+  // Save the PVkDataSpecs first into PVkDataSpecs.bin
+  FILE * StateVectorSpecsFile = NULL;
+  string StateVectorSpecsFileName = "PVkDataSpecs.bin"
+  StateVectorSpecsFile = fopen(StateVectorSpecsFileName, "wb");
+  fwrite(&StateVectorSpecs[0], sizeof(double), StateVectorSpecs.size(), StateVectorSpecsFile);
+  fclose(StateVectorSpecsFile);
 
   /*
     Main computation objects initialization
   */
   StateVectorSubs(L_vector, Ldot_vector, Theta_vector, Thetadot_vector);
-  std::set< std::tuple<int, int, int, int>> Frontier_Set, Visited_Set, Infeasi_Set, Backward_Set;
-  Eigen::Tensor<DBNode,4> StateNodeMatrix(L_Grids, Ldot_Grids, Theta_Grids, Thetadot_Grids);
-
-
-  std::vector<int> NodeParentIndVector(L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
-  std::vector<float> NodeCostVector(L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
-  StateNodeMatrixInit(StateNodeMatrix, NodeCostVector);
 
   // However, there are still three dimensions to be discretized for completeness.
-  // #TODO g: projection has to be discretized later
-
+  // Also the gravitational vector needs to be discretized
   std::clock_t start;     double duration;      start = std::clock();
 
-  // Here we are going one step forward towards completeness.
-  // At the final time the velocities need to be enumerated as well.
-
-  std::vector<int> RankingVectorObj = sort_indexes(NodeCostVector);
-  RankingVectorWriter(RankingVectorObj);
-  // std::vector<int> RankingVectorObj = RankingVectorReader();
-
-  int FeasiblePropFlag;
-
-  double CoveragePercentage = 0.0;
-  int UsedPoint = 0;
-  const int TotalNumber = L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids;
-  int VisitedNumber = 0;
-  // while(CoveragePercentage<0.99999999)     // Here we will run this whole algorithm until the coverage of the data base is within an acceptance range.
-  while(VisitedNumber<TotalNumber)     // Here we will run this whole algorithm until the coverage of the data base is within an acceptance range.
+  for (int i = 0; i < (AngleUpp - AngleLow)/AngleDiff + 1; i++)
   {
-    SystemIndex NodeSystemIndex = VectorIndexToSystemIndex(RankingVectorObj[UsedPoint]);
+    int Angle_i = AngleLow + AngleDiff * i;
 
-    DBNode *Node_kp1_ptr = &StateNodeMatrix(NodeSystemIndex.L_index,NodeSystemIndex.Ldot_index,NodeSystemIndex.Theta_index,NodeSystemIndex.Thetadot_index);
+    g = 9.81 * cos(Angle_i*1.0/180 * 3.1415926535897);
 
-    switch (Node_kp1_ptr->ParentIndex)
+    // Here we are going one step forward towards completeness.
+    // At the final time the velocities need to be enumerated as well.
+
+    std::set< std::tuple<int, int, int, int>> Frontier_Set, Visited_Set, Infeasi_Set, Backward_Set;
+    Eigen::Tensor<DBNode,4> StateNodeMatrix(L_Grids, Ldot_Grids, Theta_Grids, Thetadot_Grids);
+
+    std::vector<int> NodeParentIndVector(L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
+    std::vector<float> NodeCostVector(L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
+    StateNodeMatrixInit(StateNodeMatrix, NodeCostVector);
+
+    std::vector<int> RankingVectorObj = sort_indexes(NodeCostVector);
+    RankingVectorWriter(RankingVectorObj);
+    // std::vector<int> RankingVectorObj = RankingVectorReader();
+    int FeasiblePropFlag;
+    double CoveragePercentage = 0.0;
+    int UsedPoint = 0;
+    const int TotalNumber = L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids;
+    int VisitedNumber = 0;
+    // while(CoveragePercentage<0.99999999)     // Here we will run this whole algorithm until the coverage of the data base is within an acceptance range.
+    while(VisitedNumber<TotalNumber)     // Here we will run this whole algorithm until the coverage of the data base is within an acceptance range.
     {
-      case -2:
-
-      // ParentIndex Update
-      Node_kp1_ptr->ParentIndex = -1;         // This means that the current node is not linked to any other parent node.
-      NodeParentIndVector[Node_kp1_ptr->SelfIndex] = Node_kp1_ptr->ParentIndex;
-      NodeCostVector[Node_kp1_ptr->SelfIndex] = Node_kp1_ptr->cost;
-      // printf ("Node %d 's cost is %f \n", Node_kp1_ptr->SelfIndex, Node_kp1_ptr->cost);
-
-      // Backward Propogation from the current k+1 state
-      switch (Node_kp1_ptr->LengthFeasibleFlag)
+      SystemIndex NodeSystemIndex = VectorIndexToSystemIndex(RankingVectorObj[UsedPoint]);
+      DBNode *Node_kp1_ptr = &StateNodeMatrix(NodeSystemIndex.L_index,NodeSystemIndex.Ldot_index,NodeSystemIndex.Theta_index,NodeSystemIndex.Thetadot_index);
+      switch (Node_kp1_ptr->ParentIndex)
       {
-        // In the case where this given point is feasible but its theta could be non-viable.
-        case 1:
+        case -2:
+        // ParentIndex Update
+        Node_kp1_ptr->ParentIndex = -1;         // This means that the current node is not linked to any other parent node.
+        NodeParentIndVector[Node_kp1_ptr->SelfIndex] = Node_kp1_ptr->ParentIndex;
+        NodeCostVector[Node_kp1_ptr->SelfIndex] = Node_kp1_ptr->cost;
+        // Backward Propogation from the current k+1 state
+        switch (Node_kp1_ptr->LengthFeasibleFlag)
         {
-          FrontierUpdate(Node_kp1_ptr->NodeState, Frontier_Set, Visited_Set);
-          while(Frontier_Set.size()>0)
+          // In the case where this given point is feasible but its theta could be non-viable.
+          case 1:
           {
-            SystemIndex Node_kp1_index = FrontierPop(Frontier_Set);
-            Backward_Set = Backward_Propogation(Node_kp1_index, FeasiblePropFlag);
-            switch (FeasiblePropFlag)
+            FrontierUpdate(Node_kp1_ptr->NodeState, Frontier_Set, Visited_Set);
+            while(Frontier_Set.size()>0)
             {
-              case 1:
+              SystemIndex Node_kp1_index = FrontierPop(Frontier_Set);
+              Backward_Set = Backward_Propogation(Node_kp1_index, FeasiblePropFlag);
+              switch (FeasiblePropFlag)
               {
-                // This means that the x_k_vec solution is feasible to be stacked into the Visited_Set
+                case 1:
+                {
+                  // This means that the x_k_vec solution is feasible to be stacked into the Visited_Set
+                  Visited_Set.insert(SystemIndex2Tuple(Node_kp1_index));
+                  FrontierUpdate(Node_kp1_index, Backward_Set, Frontier_Set, StateNodeMatrix, NodeParentIndVector, NodeCostVector);
+                  break;
+                }
+                default:
+                // The value for the infeasible in the state matrix is given to be -1;
                 Visited_Set.insert(SystemIndex2Tuple(Node_kp1_index));
-                FrontierUpdate(Node_kp1_index, Backward_Set, Frontier_Set, StateNodeMatrix, NodeParentIndVector, NodeCostVector);
+                Infeasi_Set.insert(SystemIndex2Tuple(Node_kp1_index));
                 break;
               }
-              default:
-              // The value for the infeasible in the state matrix is given to be -1;
-              Visited_Set.insert(SystemIndex2Tuple(Node_kp1_index));
-              Infeasi_Set.insert(SystemIndex2Tuple(Node_kp1_index));
-              break;
             }
+            break;
           }
-          break;
         }
       }
+      VisitedNumber = Visited_Set.size() + Infeasi_Set.size();
+      // CoveragePercentage = 1.0 * VisitedNumber/(1.0 * L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
+      // std::printf("CoveragePercentage: %f\n", CoveragePercentage);
+      UsedPoint = UsedPoint + 1;
     }
-    VisitedNumber = Visited_Set.size() + Infeasi_Set.size();
-    CoveragePercentage = 1.0 * VisitedNumber/(1.0 * L_Grids * Ldot_Grids * Theta_Grids * Thetadot_Grids);
-    std::printf("CoveragePercentage: %f\n", CoveragePercentage);
-    UsedPoint = UsedPoint + 1;
+    HJBDataWriter(NodeParentIndVector, NodeCostVector, StateVectorSpecs, Angle_i);
   }
   duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
   printf ("Total running time: %f s\n", duration);
-  int FeasibleNumber = Visited_Set.size() - Infeasi_Set.size();
-  printf ("Total Feasible points: %d\n", FeasibleNumber);
-  // printf ("Total Infeasible points: %d\n", Infeasi_Set.size());
-  HJBDataWriter(NodeParentIndVector, NodeCostVector, StateVectorSpecs);
   return 0;
 }
